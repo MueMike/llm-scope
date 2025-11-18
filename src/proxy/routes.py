@@ -10,9 +10,11 @@ from pydantic import BaseModel
 import litellm
 
 from ..integrations import LangFuseClient
+from ..integrations.langfuse_enhanced import get_enhanced_langfuse_client
 from ..integrations.llm_providers import get_model_provider
 from ..monitoring import get_metrics_collector
 from ..utils import calculate_cost, extract_metadata
+from ..utils.code_quality import get_code_quality_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -93,26 +95,45 @@ async def chat_completions(
     metrics_collector.inc_active_requests(model, provider)
     
     try:
+        # Get enhanced LangFuse client (fallback to basic if enhanced unavailable)
+        enhanced_client = get_enhanced_langfuse_client()
+
         # Create LangFuse trace if enabled
         trace = None
+        generation_id = None
+
         if langfuse_client and langfuse_client.enabled:
+            # Prepare enhanced metadata
             metadata = extract_metadata(completion_request.dict())
             metadata.update({
                 "endpoint": "/chat/completions",
                 "provider": provider,
+                "model": model,
+                "trace_id": trace_id,
             })
-            
+
             # Add custom metadata from request
             if completion_request.metadata:
                 metadata.update(completion_request.metadata)
-            
-            trace = langfuse_client.create_trace(
-                name="chat_completion",
-                user_id=user_id,
-                session_id=session_id,
-                metadata=metadata,
-                tags=[provider, model],
-            )
+
+            # Use enhanced client if available, otherwise fallback to basic
+            if enhanced_client and enhanced_client.enabled:
+                trace = enhanced_client.create_trace(
+                    name="chat_completion",
+                    user_id=user_id,
+                    session_id=session_id,
+                    metadata=metadata,
+                    tags=[provider, model, "chat"],
+                    input_data={"messages": messages},
+                )
+            else:
+                trace = langfuse_client.create_trace(
+                    name="chat_completion",
+                    user_id=user_id,
+                    session_id=session_id,
+                    metadata=metadata,
+                    tags=[provider, model],
+                )
         
         # Call LiteLLM
         logger.info(f"Calling LiteLLM with model: {model}")
@@ -153,32 +174,137 @@ async def chat_completions(
         
         # Create LangFuse generation if trace exists
         if trace and langfuse_client and langfuse_client.enabled:
-            langfuse_client.create_generation(
-                trace_id=trace.id if hasattr(trace, 'id') else trace_id,
-                name="llm_generation",
-                model=model,
-                input_data=messages,
-                output_data=response.get("choices", []),
-                metadata={
-                    "provider": provider,
-                    "temperature": completion_request.temperature,
-                    "max_tokens": completion_request.max_tokens,
-                },
-                usage={
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "total_tokens": prompt_tokens + completion_tokens,
-                },
-                start_time=start_time,
-                end_time=time.time(),
-            )
-        
+            # Use enhanced client if available
+            if enhanced_client and enhanced_client.enabled:
+                generation = enhanced_client.create_generation(
+                    trace_id=trace.id if hasattr(trace, "id") else trace_id,
+                    name="llm_generation",
+                    model=model,
+                    input_data=messages,
+                    output_data=response.get("choices", []),
+                    metadata={
+                        "provider": provider,
+                        "temperature": completion_request.temperature,
+                        "max_tokens": completion_request.max_tokens,
+                        "cost_usd": cost,
+                    },
+                    usage={
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens,
+                    },
+                    start_time=start_time,
+                    end_time=time.time(),
+                )
+
+                # Store generation ID for potential scoring
+                if generation and hasattr(generation, "id"):
+                    generation_id = generation.id
+
+            else:
+                langfuse_client.create_generation(
+                    trace_id=trace.id if hasattr(trace, "id") else trace_id,
+                    name="llm_generation",
+                    model=model,
+                    input_data=messages,
+                    output_data=response.get("choices", []),
+                    metadata={
+                        "provider": provider,
+                        "temperature": completion_request.temperature,
+                        "max_tokens": completion_request.max_tokens,
+                    },
+                    usage={
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens,
+                    },
+                    start_time=start_time,
+                    end_time=time.time(),
+                )
+
+        # Attempt to analyze code quality if response contains code
+        if enhanced_client and enhanced_client.enabled and trace:
+            try:
+                # Extract generated text from response
+                choices = response.get("choices", [])
+                if choices:
+                    generated_text = choices[0].get("message", {}).get("content", "")
+
+                    # Check if response contains code (basic heuristic)
+                    has_code = (
+                        "```" in generated_text
+                        or "def " in generated_text
+                        or "function " in generated_text
+                        or "class " in generated_text
+                    )
+
+                    if has_code and len(generated_text) > 20:
+                        # Extract code blocks (simple extraction)
+                        code_blocks = []
+                        if "```" in generated_text:
+                            parts = generated_text.split("```")
+                            for i, part in enumerate(parts):
+                                if i % 2 == 1:  # Odd indices are code blocks
+                                    # Remove language identifier
+                                    lines = part.strip().split("\n")
+                                    if lines:
+                                        # First line might be language, skip if it's short
+                                        if len(lines[0]) < 20:
+                                            code_blocks.append("\n".join(lines[1:]))
+                                        else:
+                                            code_blocks.append(part.strip())
+
+                        # Analyze each code block
+                        if code_blocks:
+                            analyzer = get_code_quality_analyzer()
+
+                            for idx, code in enumerate(code_blocks):
+                                # Detect language from request metadata or code
+                                language = "python"  # Default
+                                if completion_request.metadata:
+                                    language = completion_request.metadata.get("language", "python")
+
+                                # Analyze quality
+                                quality_score = analyzer.analyze(code, language)
+
+                                # Create event for code analysis
+                                enhanced_client.create_event(
+                                    trace_id=trace.id if hasattr(trace, "id") else trace_id,
+                                    name="code_quality_analysis",
+                                    metadata={
+                                        "block_index": idx,
+                                        "language": language,
+                                        "code_length": len(code),
+                                        **quality_score.to_dict(),
+                                    },
+                                    parent_observation_id=generation_id,
+                                )
+
+                                # Add scores
+                                if generation_id:
+                                    enhanced_client.add_multi_dimensional_score(
+                                        trace_id=trace.id if hasattr(trace, "id") else trace_id,
+                                        observation_id=generation_id,
+                                        scores=quality_score.get_scores_dict(),
+                                        config_id="automated_code_quality_v1",
+                                    )
+
+                                logger.info(
+                                    f"Code quality analysis: overall={quality_score.overall:.3f}, "
+                                    f"syntax={quality_score.syntax_correctness:.3f}, "
+                                    f"security={quality_score.security_score:.3f}"
+                                )
+
+            except Exception as e:
+                # Don't fail the request if quality analysis fails
+                logger.warning(f"Code quality analysis failed: {e}")
+
         logger.info(
             f"Chat completion successful: model={model}, "
             f"tokens={prompt_tokens + completion_tokens}, "
             f"cost=${cost:.6f}, duration={duration:.3f}s"
         )
-        
+
         return response
         
     except Exception as e:
