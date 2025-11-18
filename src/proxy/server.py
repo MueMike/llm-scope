@@ -88,11 +88,12 @@ def create_app() -> FastAPI:
     
     # Add custom middleware
     app.add_middleware(MetricsMiddleware)
-    
-    # Add tracing middleware if LangFuse is configured
+
+    # Add tracing middleware (always, but LangFuse integration is optional)
+    langfuse_client = None
     if settings.is_langfuse_configured():
         langfuse_client = LangFuseClient(settings)
-        app.add_middleware(TracingMiddleware, langfuse_client=langfuse_client)
+    app.add_middleware(TracingMiddleware, langfuse_client=langfuse_client)
     
     # Include routes
     app.include_router(router)

@@ -104,7 +104,7 @@ async def chat_completions(
 
         if langfuse_client and langfuse_client.enabled:
             # Prepare enhanced metadata
-            metadata = extract_metadata(completion_request.dict())
+            metadata = extract_metadata(completion_request.model_dump())
             metadata.update({
                 "endpoint": "/chat/completions",
                 "provider": provider,

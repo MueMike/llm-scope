@@ -40,3 +40,28 @@ def reset_metrics_singleton():
     yield
 
     metrics_module._metrics_collector = original_collector
+
+
+@pytest.fixture
+def benchmark():
+    """Simple benchmark fixture for performance testing."""
+    import time
+
+    class SimpleBenchmark:
+        """Simple benchmarking helper."""
+
+        def __init__(self):
+            self.elapsed = 0
+
+        def __call__(self, func, *args, **kwargs):
+            """Run and time a function."""
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            self.elapsed = time.perf_counter() - start
+            return result
+
+        def pedantic(self, func, *args, **kwargs):
+            """Run function with more precise timing."""
+            return self(func, *args, **kwargs)
+
+    return SimpleBenchmark()

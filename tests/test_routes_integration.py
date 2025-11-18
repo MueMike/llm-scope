@@ -209,17 +209,18 @@ class TestChatCompletionsWithLangFuse:
         """Test that chat completion creates LangFuse trace when enabled."""
         mock_acompletion.return_value = mock_litellm_response
 
-        # Inject mock LangFuse client into app state
-        with patch.object(client.app.state, "langfuse_client", mock_langfuse_client):
-            payload = {
-                "model": "gpt-4",
-                "messages": [{"role": "user", "content": "Test"}],
-            }
+        # Initialize app.state.langfuse_client first (set it before patching)
+        client.app.state.langfuse_client = mock_langfuse_client
 
-            # Need to patch request.state to include langfuse_client
-            with patch("src.proxy.routes.getattr", side_effect=lambda obj, name, default=None:
-                      mock_langfuse_client if name == "langfuse_client" else default):
-                response = client.post("/v1/chat/completions", json=payload)
+        payload = {
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Test"}],
+        }
+
+        # Need to patch request.state to include langfuse_client
+        with patch("src.proxy.routes.getattr", side_effect=lambda obj, name, default=None:
+                  mock_langfuse_client if name == "langfuse_client" else default):
+            response = client.post("/v1/chat/completions", json=payload)
 
         assert response.status_code == 200
 
@@ -268,8 +269,18 @@ class TestChatCompletionsErrors:
     def test_chat_completion_authentication_error(self, mock_acompletion, client):
         """Test authentication error handling."""
         from openai import AuthenticationError
+        from unittest.mock import MagicMock
 
-        mock_acompletion.side_effect = AuthenticationError("Invalid API key")
+        # Create mock response object for AuthenticationError
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.headers = {}
+
+        mock_acompletion.side_effect = AuthenticationError(
+            "Invalid API key",
+            response=mock_response,
+            body=None
+        )
 
         payload = {
             "model": "gpt-4",
@@ -292,8 +303,12 @@ class TestChatCompletionsErrors:
 
         assert response.status_code == 422  # Validation error
 
-    def test_chat_completion_empty_messages(self, client):
+    @patch("src.proxy.routes.litellm.acompletion")
+    def test_chat_completion_empty_messages(self, mock_acompletion, client):
         """Test handling of empty messages array."""
+        # LiteLLM will raise an error for empty messages
+        mock_acompletion.side_effect = Exception("messages must not be empty")
+
         payload = {
             "model": "gpt-4",
             "messages": [],
@@ -301,11 +316,15 @@ class TestChatCompletionsErrors:
 
         response = client.post("/v1/chat/completions", json=payload)
 
-        # FastAPI validation should catch this or LiteLLM should return error
-        assert response.status_code in [422, 500]
+        # Should return 500 error
+        assert response.status_code == 500
 
-    def test_chat_completion_invalid_model(self, client):
+    @patch("src.proxy.routes.litellm.acompletion")
+    def test_chat_completion_invalid_model(self, mock_acompletion, client):
         """Test handling of invalid model name."""
+        # LiteLLM will raise an error for invalid model
+        mock_acompletion.side_effect = Exception("Invalid model specified")
+
         payload = {
             "model": "",
             "messages": [{"role": "user", "content": "Test"}],
@@ -313,7 +332,8 @@ class TestChatCompletionsErrors:
 
         response = client.post("/v1/chat/completions", json=payload)
 
-        assert response.status_code in [422, 500]
+        # Should return 500 error
+        assert response.status_code == 500
 
     def test_chat_completion_malformed_json(self, client):
         """Test handling of malformed JSON."""

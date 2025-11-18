@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 class TracingMiddleware(BaseHTTPMiddleware):
     """Middleware for request/response tracing with LangFuse."""
 
-    def __init__(self, app, langfuse_client: LangFuseClient):
+    def __init__(self, app, langfuse_client: LangFuseClient = None):
         """
         Initialize tracing middleware.
-        
+
         Args:
             app: FastAPI application
-            langfuse_client: LangFuse client instance
+            langfuse_client: Optional LangFuse client instance (None to disable LangFuse integration)
         """
         super().__init__(app)
         self.langfuse_client = langfuse_client
