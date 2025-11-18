@@ -57,13 +57,13 @@ class TracingMiddleware(BaseHTTPMiddleware):
         
         # Process request
         response = await call_next(request)
-        
-        # Calculate duration
+
+        # Calculate duration for logging
         duration = time.time() - start_time
-        
-        # Add trace headers to response
+
+        # Add trace ID header to response
+        # Note: X-Duration-Ms is set by MetricsMiddleware
         response.headers["X-Trace-ID"] = trace_id
-        response.headers["X-Duration-Ms"] = str(int(duration * 1000))
         
         logger.debug(
             f"Request processed: {request.method} {request.url.path} "
