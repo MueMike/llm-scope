@@ -8,9 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..config import get_settings
 from ..integrations import LangFuseClient
+from ..integrations.langfuse_enhanced import get_enhanced_langfuse_client
 from ..monitoring import get_metrics_collector, setup_logging
 from .middleware import MetricsMiddleware, TracingMiddleware
 from .routes import router
+from .analytics_routes import router as analytics_router
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +41,24 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to start metrics server: {e}")
     
-    # Initialize LangFuse client
+    # Initialize LangFuse client (basic)
     langfuse_client = LangFuseClient(settings)
     app.state.langfuse_client = langfuse_client
-    
+
+    # Initialize enhanced LangFuse client
+    enhanced_client = get_enhanced_langfuse_client()
+    app.state.enhanced_langfuse_client = enhanced_client
+
+    logger.info(f"Enhanced LangFuse features enabled: {enhanced_client.enabled}")
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down LiteLLM Proxy")
     if langfuse_client:
         langfuse_client.shutdown()
+    if enhanced_client and enhanced_client.enabled:
+        enhanced_client.shutdown()
 
 
 def create_app() -> FastAPI:
@@ -86,7 +96,8 @@ def create_app() -> FastAPI:
     
     # Include routes
     app.include_router(router)
-    
+    app.include_router(analytics_router)
+
     # Dependency injection for LangFuse client
     @app.middleware("http")
     async def inject_dependencies(request, call_next):
