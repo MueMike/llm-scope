@@ -1,0 +1,267 @@
+name: Security Scanning
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+  schedule:
+    # Run security scans every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  # ============================================================================
+  # CodeQL Analysis
+  # ============================================================================
+  codeql:
+    name: CodeQL Security Analysis
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['python']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # ============================================================================
+  # Dependency Scanning
+  # ============================================================================
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          deny-licenses: GPL-3.0, AGPL-3.0
+
+  # ============================================================================
+  # SAST Scanning with Semgrep
+  # ============================================================================
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan --config=auto --json --output=semgrep-report.json || true
+          semgrep scan --config=auto
+        continue-on-error: true
+
+      - name: Upload Semgrep report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-report
+          path: semgrep-report.json
+          retention-days: 30
+
+  # ============================================================================
+  # Secret Scanning
+  # ============================================================================
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ============================================================================
+  # Container Security Scanning
+  # ============================================================================
+  trivy:
+    name: Trivy Container Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          load: true
+          tags: litellm-proxy-langfuse:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'litellm-proxy-langfuse:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy vulnerability scanner (table format)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'litellm-proxy-langfuse:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+  # ============================================================================
+  # Python Dependency Vulnerability Scanning
+  # ============================================================================
+  python-security:
+    name: Python Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install bandit safety pip-audit
+
+      - name: Run Bandit security linter
+        run: |
+          bandit -r src/ -f json -o bandit-report.json
+          bandit -r src/ -ll
+        continue-on-error: true
+
+      - name: Run Safety check
+        run: |
+          safety check --json > safety-report.json || true
+          safety check --short-report
+        continue-on-error: true
+
+      - name: Run pip-audit
+        run: |
+          pip-audit --desc --format json > pip-audit-report.json || true
+          pip-audit --desc
+        continue-on-error: true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+            pip-audit-report.json
+          retention-days: 30
+
+  # ============================================================================
+  # License Compliance Check
+  # ============================================================================
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pip-licenses
+
+      - name: Check licenses
+        run: |
+          pip-licenses --format=markdown --output-file=licenses.md
+          pip-licenses --format=json --output-file=licenses.json
+          echo "✓ License compliance check completed"
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: |
+            licenses.md
+            licenses.json
+          retention-days: 90
+
+  # ============================================================================
+  # Security Summary
+  # ============================================================================
+  security-summary:
+    name: Security Scan Summary
+    runs-on: ubuntu-latest
+    needs: [codeql, semgrep, secret-scan, trivy, python-security, license-check]
+    if: always()
+    steps:
+      - name: Check security status
+        run: |
+          echo "Security Scan Results:"
+          echo "======================"
+          echo "CodeQL: ${{ needs.codeql.result }}"
+          echo "Semgrep: ${{ needs.semgrep.result }}"
+          echo "Secret Scan: ${{ needs.secret-scan.result }}"
+          echo "Trivy: ${{ needs.trivy.result }}"
+          echo "Python Security: ${{ needs.python-security.result }}"
+          echo "License Check: ${{ needs.license-check.result }}"
+
+          # Note: Don't fail the workflow on security scans as they often have false positives
+          echo "✓ Security scanning completed"

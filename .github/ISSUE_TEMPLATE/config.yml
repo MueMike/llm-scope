@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/MueMike/llm-scope/discussions
+    about: Ask questions and discuss with the community
+  - name: 📚 Documentation
+    url: https://github.com/MueMike/llm-scope/blob/main/README.md
+    about: Read the documentation
+  - name: 🔒 Security Issues
+    url: https://github.com/MueMike/llm-scope/security/advisories/new
+    about: Report security vulnerabilities privately

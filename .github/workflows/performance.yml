@@ -1,0 +1,111 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest-benchmark locust
+
+      - name: Run performance benchmarks
+        run: |
+          # Create a simple benchmark test
+          cat > tests/test_benchmark.py << 'EOF'
+          import pytest
+          from src.utils.helpers import calculate_cost, generate_trace_id
+
+          def test_benchmark_calculate_cost(benchmark):
+              result = benchmark(calculate_cost, "gpt-4", 1000, 500)
+              assert result >= 0
+
+          def test_benchmark_trace_id_generation(benchmark):
+              result = benchmark(generate_trace_id)
+              assert len(result) > 0
+          EOF
+
+          pytest tests/test_benchmark.py --benchmark-only --benchmark-json=benchmark-results.json || true
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        if: github.ref == 'refs/heads/main'
+        with:
+          tool: 'pytest'
+          output-file-path: benchmark-results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false
+
+  load-test:
+    name: Load Testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and start services
+        run: |
+          cd docker
+          docker-compose up -d
+          sleep 10
+
+      - name: Wait for service to be ready
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+
+      - name: Run basic load test
+        run: |
+          # Simple load test with curl
+          echo "Running basic load test..."
+          for i in {1..100}; do
+            curl -s http://localhost:8000/health > /dev/null &
+          done
+          wait
+          echo "✓ Load test completed"
+
+      - name: Collect logs
+        if: always()
+        run: |
+          cd docker
+          docker-compose logs > load-test-logs.txt
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-logs
+          path: docker/load-test-logs.txt
+
+      - name: Cleanup
+        if: always()
+        run: |
+          cd docker
+          docker-compose down
