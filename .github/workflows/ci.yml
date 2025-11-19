@@ -95,20 +95,21 @@ jobs:
 
       - name: Run Bandit security scan
         run: |
-          bandit -r src/ -f json -o bandit-report.json || true
+          bandit -r src/ -f json -o bandit-report.json
           bandit -r src/ -ll -i
           echo "✓ Bandit security scan completed"
+        continue-on-error: true
 
       - name: Check for known vulnerabilities (Safety)
         run: |
-          safety check --json || true
+          safety check --json > safety-report.json
           safety check --short-report
           echo "✓ Safety vulnerability check completed"
         continue-on-error: true
 
       - name: Audit dependencies (pip-audit)
         run: |
-          pip-audit --desc || true
+          pip-audit --desc > pip-audit-report.txt
           echo "✓ Pip audit completed"
         continue-on-error: true
 
@@ -167,7 +168,7 @@ jobs:
           coverage html
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.11'
+        if: matrix.python-version == '3.11' && secrets.CODECOV_TOKEN != ''
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml

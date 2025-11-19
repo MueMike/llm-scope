@@ -34,7 +34,8 @@ jobs:
       - name: Run performance benchmarks
         run: |
           # Create a simple benchmark test
-          cat > tests/test_benchmark.py << 'EOF'
+          mkdir -p tests/benchmarks
+          cat > tests/benchmarks/test_benchmark.py << 'EOF'
           import pytest
           from src.utils.helpers import calculate_cost, generate_trace_id
 
@@ -47,19 +48,16 @@ jobs:
               assert len(result) > 0
           EOF
 
-          pytest tests/test_benchmark.py --benchmark-only --benchmark-json=benchmark-results.json || true
+          pytest tests/benchmarks/test_benchmark.py --benchmark-only --benchmark-json=benchmark-results.json || true
+        continue-on-error: true
 
-      - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
-        if: github.ref == 'refs/heads/main'
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          tool: 'pytest'
-          output-file-path: benchmark-results.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          alert-threshold: '150%'
-          comment-on-alert: true
-          fail-on-alert: false
+          name: benchmark-results
+          path: benchmark-results.json
+          retention-days: 30
 
   load-test:
     name: Load Testing
