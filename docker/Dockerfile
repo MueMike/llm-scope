@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for LiteLLM Proxy with LangFuse
 
 # Build stage
-FROM python:3.13-slim as builder
+FROM python:3.14-slim as builder
 
 # Set working directory
 WORKDIR /app
@@ -19,7 +19,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Runtime stage
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # Set working directory
 WORKDIR /app
