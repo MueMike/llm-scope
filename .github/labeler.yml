@@ -1,0 +1,64 @@
+# Labeler configuration for automatic PR labeling
+
+# Area labels
+'area/proxy':
+  - 'src/proxy/**/*'
+
+'area/integrations':
+  - 'src/integrations/**/*'
+
+'area/config':
+  - 'src/config/**/*'
+
+'area/middleware':
+  - 'src/proxy/middleware.py'
+
+'area/monitoring':
+  - 'src/monitoring/**/*'
+
+'area/utils':
+  - 'src/utils/**/*'
+
+'area/tests':
+  - 'tests/**/*'
+  - '**/*test*.py'
+
+'area/docker':
+  - 'docker/**/*'
+  - 'Dockerfile'
+  - 'docker-compose.yml'
+
+'area/ci-cd':
+  - '.github/**/*'
+
+'area/docs':
+  - '**/*.md'
+  - 'docs/**/*'
+
+# Type labels
+'type/bug':
+  - head-branch: ['^fix/', 'fix-']
+
+'type/feature':
+  - head-branch: ['^feature/', 'feat-']
+
+'type/refactor':
+  - head-branch: ['^refactor/', 'refactoring-']
+
+'type/chore':
+  - head-branch: ['^chore/']
+
+# Dependency updates
+'dependencies':
+  - 'requirements.txt'
+  - 'pyproject.toml'
+  - 'setup.py'
+  - 'setup.cfg'
+
+# Configuration changes
+'configuration':
+  - 'config/**/*'
+  - '.env.example'
+  - '**/*.yaml'
+  - '**/*.yml'
+  - '**/*.json'

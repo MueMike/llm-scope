@@ -1,0 +1,82 @@
+version: 2
+
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "MueMike"
+    assignees:
+      - "MueMike"
+    labels:
+      - "dependencies"
+      - "python"
+      - "automated"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    versioning-strategy: increase
+    groups:
+      # Group LiteLLM and related packages
+      litellm:
+        patterns:
+          - "litellm*"
+      # Group FastAPI and related packages
+      fastapi:
+        patterns:
+          - "fastapi*"
+          - "uvicorn*"
+          - "pydantic*"
+      # Group LangFuse packages
+      langfuse:
+        patterns:
+          - "langfuse*"
+      # Group testing packages
+      testing:
+        patterns:
+          - "pytest*"
+          - "*-mock"
+      # Group linting/formatting packages
+      dev-tools:
+        patterns:
+          - "black"
+          - "flake8*"
+          - "mypy*"
+          - "isort"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
