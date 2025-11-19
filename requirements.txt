@@ -10,7 +10,7 @@ langfuse==3.10.0
 
 # HTTP and async support
 httpx==0.25.1
-aiohttp==3.9.1
+aiohttp==3.11.11
 
 # Configuration and environment
 python-dotenv==1.0.0
