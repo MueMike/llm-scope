@@ -6,7 +6,7 @@ pydantic==2.12.4
 pydantic-settings==2.12.0
 
 # LangFuse integration
-langfuse==2.32.0
+langfuse==3.10.0
 
 # HTTP and async support
 httpx==0.25.1
