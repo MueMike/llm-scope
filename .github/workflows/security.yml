@@ -81,7 +81,7 @@ jobs:
 
       - name: Run Semgrep
         run: |
-          semgrep scan --config=auto --json --output=semgrep-report.json || true
+          semgrep scan --config=auto --json --output=semgrep-report.json
           semgrep scan --config=auto
         continue-on-error: true
 
@@ -110,6 +110,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true
 
   # ============================================================================
   # Container Security Scanning
@@ -185,13 +186,13 @@ jobs:
 
       - name: Run Safety check
         run: |
-          safety check --json > safety-report.json || true
+          safety check --json > safety-report.json
           safety check --short-report
         continue-on-error: true
 
       - name: Run pip-audit
         run: |
-          pip-audit --desc --format json > pip-audit-report.json || true
+          pip-audit --desc --format json > pip-audit-report.json
           pip-audit --desc
         continue-on-error: true
 

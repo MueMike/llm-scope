@@ -49,10 +49,10 @@ jobs:
 
           # Run curl tests
           chmod +x tests/test_curl.sh
-          ./tests/test_curl.sh || true
+          ./tests/test_curl.sh
 
           # Cleanup
-          kill $SERVER_PID || true
+          kill $SERVER_PID
         continue-on-error: true
 
       - name: Upload test results
@@ -87,7 +87,7 @@ jobs:
       - name: Check for outdated packages
         run: |
           pip list --outdated
-          pip-check || true
+          pip-check
         continue-on-error: true
 
   docker-nightly:

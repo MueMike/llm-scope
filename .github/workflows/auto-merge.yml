@@ -35,7 +35,7 @@ jobs:
       )
     steps:
       - name: Auto merge
-        uses: pascalgn/automerge-action@v0.16.4
+        uses: pascalgn/automerge-action@v0.16.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_LABELS: "auto-merge,!work-in-progress,!do-not-merge"
@@ -54,7 +54,7 @@ jobs:
     steps:
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v1
+        uses: dependabot/fetch-metadata@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
