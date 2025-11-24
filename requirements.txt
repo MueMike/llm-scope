@@ -1,6 +1,6 @@
 # Core LiteLLM and API framework
 litellm==1.80.0
-fastapi==0.121.2
+fastapi==0.121.3
 uvicorn[standard]==0.38.0
 pydantic==2.12.4
 pydantic-settings==2.12.0
