@@ -1,5 +1,5 @@
 # Core LiteLLM and API framework
-litellm==1.80.0
+litellm==1.80.5
 fastapi==0.121.2
 uvicorn[standard]==0.38.0
 pydantic==2.12.4
